@@ -130,7 +130,7 @@
       <rect width="500" height="80" rx="16" fill="#FFFFFF"/>
       <rect x="18" y="18" width="92" height="28" rx="8" fill="#EDE9FE"/>
       <text x="64" y="38" text-anchor="middle" class="mono" font-size="17" font-weight="700" fill="#6D4AFF">Q0007</text>
-      <text x="126" y="39" font-size="21" font-weight="700" fill="#1E1B3A">Refund the late booking?</text>
+      <text x="126" y="39" font-size="21" font-weight="700" fill="#1E1B3A">Move CSV export to Pro?</text>
       <text x="126" y="64" font-size="17" fill="#64748B">today · example · 3 options · recommended</text>
     </g></g>
     <g transform="translate(640 216)"><g class="c2">
@@ -151,7 +151,7 @@
       <rect width="500" height="80" rx="16" fill="#ECFDF5" stroke="#10B981" stroke-width="3"/>
       <circle cx="46" cy="40" r="20" fill="#10B981"/>
       <path d="M36 40 l7 8 l14 -16" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-      <text x="80" y="39" font-size="21" font-weight="700" fill="#065F46">Answered: "1, but email the guest"</text>
+      <text x="80" y="39" font-size="21" font-weight="700" fill="#065F46">Answered: "1, but keep it for tiny teams"</text>
       <text x="80" y="64" font-size="17" fill="#047857">recorded word for word · agent studies it</text>
     </g></g>
   </g>

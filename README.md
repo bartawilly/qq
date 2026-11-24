@@ -30,7 +30,7 @@ Every question becomes a **card**: a small Markdown file in your project's `.qq/
 | | |
 |---|---|
 | **Asked when you're here** | Cards wait while you're away. Nobody freezes, and other work keeps moving. |
-| **Asked once** | A card is claimed by an atomic file move before it's asked, so parallel sessions can't double-ask. |
+| **Asked once** | A card is claimed by an atomic file move before it's asked, so parallel sessions can't double-ask: automatically with the Claude Code plugin, through `qq claim` elsewhere. |
 | **Asked properly** | Every card says what happens today, who it affects, gives an example with numbers, and makes an honest recommendation. |
 | **Your words count** | Every question keeps a free-text answer. Pick an option, add a condition, or push back: the agent studies what you said and re-asks if needed. |
 | **Nothing lost** | Your answer is written into the card, word for word. |
@@ -58,36 +58,47 @@ npx skills add bartawilly/qq
 | Answers recorded automatically | ✅ | — via `qq answer` |
 | Reminders when you come back | ✅ | — |
 
+Restart your sessions afterwards, so they load the hooks.
+
 **Then turn it on in a repository.** qq is opt-in, so nothing changes anywhere else:
 
-```bash
-python3 <skill folder>/scripts/qq.py init     # or just ask your agent: "use qq here"
+```text
+/qq init          # Claude Code plugin
 ```
 
-Installed through skills.sh into Claude Code? Run `qq.py setup` once to add the hooks. It backs up your settings first, and `setup --remove` undoes it.
+With any other agent, just ask it: *"use qq in this repo"* (it runs `qq.py init` from the skill).
 
-Needs Python 3.9+ as `python3`, and nothing else. On a fresh Mac, `python3` may first prompt you to install Apple's command-line tools.
+Other commands: `/qq list`, `/qq away` before you step out, `/qq back`, and `/qq off` to pause qq in a repository.
+
+Installed through skills.sh into Claude Code? Run `python3 ~/.agents/skills/qq/scripts/qq.py setup` once to add the hooks. It backs up your settings first, and `setup --remove` undoes it.
+
+Needs Python 3.9+ as `python3`, and nothing else. Tested on macOS and Linux; Windows is untested. On a fresh Mac, `python3` may first prompt you to install Apple's command-line tools.
 
 ## A card
 
 ```markdown
-# Q0007 · Should a late cancellation still get a refund?
-- Owner: billing-agent (payments lead)
-- Blocks: the refund-policy PR
+# Q0007 · Should the free plan keep CSV export?
+- Owner: api-agent (billing work)
+- Filed: 2026-11-24 13:07
+- Blocks: the pricing-page PR
 
 ## Today, step by step
-A guest who cancels inside 48 hours is refunded in full; nothing checks the timing.
+Every plan can export CSV. The new Pro plan was meant to include it as a paid perk.
 
 ## Who meets it, and how often
-About 1 booking in 20; on a €2,000 trip we lose the full amount.
+About 300 free users export each month; 12 of them upgraded last month after asking about limits.
+
+## Example (example numbers)
+Maya runs a 3-person team on the free plan and exports weekly. With option 1 she sees
+"CSV export is a Pro feature" and a $9/month upgrade; with option 2, nothing changes.
 
 ## Options
-1. 50% refund inside 48 h (Recommended): guest sees the rule at checkout; ~€1,000 kept per case.
-2. Keep full refunds: nothing changes.
+1. Move CSV export to Pro (Recommended): free users see an upgrade prompt; roughly +$100/month if 1 in 30 upgrade.
+2. Keep it free: no change, no new revenue, and Pro stays harder to sell.
 
 ## Recommendation: option 1 · leaning
-- Why: protects revenue without surprising guests, because the rule shows before they pay.
-- What would change my mind: if most late cancellations are weather-related.
+- Why: a clear Pro reason at a real moment of need, without removing data people already have.
+- What would change my mind: if exports are mostly compliance downloads people can't skip.
 ```
 
 ## How it works
@@ -113,6 +124,9 @@ flowchart LR
 | `QQ_MIN_QUESTION` | `120` | Minimum question length, so it carries context |
 | `QQ_MIN_OPTION` | `60` | Minimum length of each option's explanation |
 | `QQ_OWNER` | | Default owner name for `qq new` |
+| `QQ_DIR` | | Use this folder as the queue instead of finding `.qq/` |
+
+Set them in your shell, or for Claude Code in `~/.claude/settings.json` under `"env"`.
 
 `qq off` turns the hooks off in one project, and `qq on` turns them back on. Linked git worktrees share the main worktree's queue, so parallel sessions in worktrees still never double-ask.
 
@@ -121,7 +135,7 @@ flowchart LR
 ## What qq doesn't do
 
 - **No inbox app, no server, no account.** Cards are plain files you can read in any editor.
-- **Nothing in repositories you didn't opt in.** Without a `.qq/` folder, qq does nothing. A `.qq/` committed to git is ignored, so a cloned repository can never plant questions in your sessions.
+- **Nothing in repositories you didn't opt in.** qq acts only on queues you created with `qq init` or `qq new`; it keeps their list in `~/.config/qq/`. A `.qq/` that arrives with a clone or a download is ignored, so nobody can plant questions in your sessions.
 - **No enforcement outside Claude Code (yet).** Other agents follow the protocol through the skill and CLI. Hook support for Codex is the next step.
 - **Never answers for you.** The hooks only ever refuse a question box. They never fill one in.
 

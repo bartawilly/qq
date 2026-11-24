@@ -98,7 +98,9 @@ def git(start: str, *args: str) -> str:
 
 def main_worktree(start: str) -> str:
     """Top level of the repository's MAIN worktree, so linked worktrees share one queue."""
-    common = git(start, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    common = git(start, "rev-parse", "--path-format=absolute", "--git-common-dir") or git(start, "rev-parse", "--git-common-dir")
+    if common and not os.path.isabs(common):
+        common = os.path.abspath(os.path.join(start, common))
     if common and os.path.basename(common.rstrip(os.sep)) == ".git":
         return os.path.dirname(common.rstrip(os.sep))
     return git(start, "rev-parse", "--show-toplevel")
@@ -117,17 +119,19 @@ def find_queue(cwd: str = ""):
     if env:
         return env if os.path.isdir(env) else None
     here = os.path.abspath(start_dir(cwd))
-    while True:
+    home = os.path.abspath(os.path.expanduser("~"))
+    top = os.path.abspath(git(here, "rev-parse", "--show-toplevel") or here)
+    while here != home:  # walk up only to the repository's top level, never into $HOME
         cand = os.path.join(here, ".qq")
         if os.path.isdir(cand):
             return cand
         parent = os.path.dirname(here)
-        if parent == here:
+        if here == top or parent == here:
             break
         here = parent
-    top = main_worktree(start_dir(cwd))
-    if top and os.path.isdir(os.path.join(top, ".qq")):
-        return os.path.join(top, ".qq")
+    main = main_worktree(start_dir(cwd))
+    if main and os.path.isdir(os.path.join(main, ".qq")):
+        return os.path.join(main, ".qq")
     return None
 
 
@@ -143,9 +147,37 @@ def queue_home(cwd: str = "") -> str:
     return os.path.join(top or os.path.abspath(start_dir(cwd)), ".qq")
 
 
-def tracked_by_git(qdir: str) -> bool:
-    """A .qq/ committed to the repository came from someone else: never inject its cards into prompts."""
-    return bool(git(os.path.dirname(qdir), "ls-files", "--", os.path.basename(qdir)))
+TRUST_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "qq", "trusted-queues")
+
+
+def trusted(qdir: str) -> bool:
+    """Fail closed: hooks act only on queues this user created with qq (init/new), never on a
+    .qq/ that arrived with a clone or a download, so nobody can plant questions in your prompts."""
+    try:
+        with open(TRUST_FILE, encoding="utf-8") as fh:
+            known = {line.strip() for line in fh if line.strip()}
+    except OSError:
+        return False
+    return os.path.realpath(qdir) in known
+
+
+def trust(qdir: str) -> None:
+    real = os.path.realpath(qdir)
+    if trusted(real):
+        return
+    os.makedirs(os.path.dirname(TRUST_FILE), exist_ok=True)
+    append(TRUST_FILE, real + "\n")
+
+
+def owned_privately(path: str) -> bool:
+    """POSIX: the queue must belong to this user and not be writable by group or others."""
+    if os.name == "nt":
+        return True
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return st.st_uid == os.getuid() and not (st.st_mode & 0o022)
 
 
 class Q:
@@ -161,9 +193,11 @@ class Q:
         self.log_file = os.path.join(self.state, "hook.log")
         self.ids = os.path.join(self.state, "ids")
 
-    def ensure(self) -> None:
+    def ensure(self, trust_it: bool = False) -> None:
         for d in (self.open, self.asking, self.closed, self.state, self.ids):
             os.makedirs(d, exist_ok=True)
+        if trust_it:
+            trust(self.dir)
         ignore = os.path.join(self.dir, ".gitignore")
         if not os.path.exists(ignore):
             with open(ignore, "w") as fh:
@@ -181,7 +215,8 @@ class Q:
 
     def safe(self) -> bool:
         """Refuse a queue whose folders are symlinks (they could point anywhere)."""
-        return not any(os.path.islink(p) for p in (self.dir, self.open, self.asking, self.closed, self.state))
+        parts = (self.dir, self.open, self.asking, self.closed, self.state, self.ids, os.path.join(self.state, "runs"))
+        return not any(os.path.islink(p) for p in parts) and owned_privately(self.dir)
 
     def find(self, cid: str):
         for folder in (self.open, self.asking, self.closed):
@@ -194,6 +229,8 @@ class Q:
     def log(self, msg: str) -> None:
         try:
             os.makedirs(self.state, exist_ok=True)
+            if os.path.exists(self.log_file) and os.path.getsize(self.log_file) > 256 * 1024:
+                os.replace(self.log_file, self.log_file + ".1")  # keep the log small: one 256 KB rotation
             append(self.log_file, f"{fmt(time.time())} {msg}\n")
         except OSError:
             pass
@@ -438,7 +475,14 @@ def spawn_confirm(q: Q, transcript: str, prompt: str, t: float) -> None:
     proc.stdin.close()
 
 
-CONFIRM_DELAYS = tuple(float(x) for x in os.environ.get("QQ_CONFIRM_DELAYS", "2,4,10,30").split(","))
+def _delays() -> tuple:
+    try:
+        return tuple(float(x) for x in os.environ.get("QQ_CONFIRM_DELAYS", "").split(",")) or (2, 4, 10, 30)
+    except ValueError:
+        return (2, 4, 10, 30)
+
+
+CONFIRM_DELAYS = _delays()
 
 
 def hook_confirm(qdir: str, transcript: str, t: float, prompt: str, delays=CONFIRM_DELAYS) -> None:
@@ -493,9 +537,10 @@ def hook_prompt(q: Q, data: dict) -> None:
             if (alive is False and age > STALE_ASKING) or (alive is None and age > STALE_UNKNOWN):
                 release(p, q, f"asker {asker_name(p)} has ended")
     try:
+        import stat
         for n in os.listdir(q.state):
             fp = os.path.join(q.state, n)
-            if n.startswith("told-") and t - os.path.getmtime(fp) > 86400:
+            if n.startswith("told-") and stat.S_ISREG(os.lstat(fp).st_mode) and t - os.lstat(fp).st_mtime > 86400:
                 os.remove(fp)
     except OSError:
         pass
@@ -714,21 +759,30 @@ def first_run(q: Q, mode: str, data: dict) -> bool:
     """False for a duplicate run of the same event (qq installed both as plugin and via setup).
 
     Tool events dedupe on Claude Code's tool_use_id only; without one they run again, which is
-    safe because every handler is idempotent. A prompt dedupes on its text within a few seconds,
-    so a double install never prints the reminder twice."""
+    safe because every handler is idempotent. A prompt dedupes on its text plus the transcript's
+    current size, so a double install prints the reminder once while a later identical prompt still counts."""
     import hashlib
     if mode == "prompt":
-        key = hashlib.sha1((str(data.get("prompt")) + str(int(time.time() // 5))).encode("utf-8", "replace")).hexdigest()[:16]
+        try:  # both copies of a double install see the same transcript size; a later identical "yes" does not
+            size = os.path.getsize(data.get("transcript_path") or "")
+        except OSError:
+            size = int(time.time() // 5)
+        key = hashlib.sha1(f"{data.get('prompt')}|{data.get('transcript_path')}|{size}".encode("utf-8", "replace")).hexdigest()[:16]
     elif data.get("tool_use_id"):
         key = str(data["tool_use_id"])[:64]
     else:
         return True
+    import stat
     d = os.path.join(q.state, "runs")
     os.makedirs(d, exist_ok=True)
+    if os.path.islink(d):
+        return True
     try:
         for n in os.listdir(d):
             fp = os.path.join(d, n)
-            if time.time() - os.path.getmtime(fp) > 3600:
+            st = os.lstat(fp)
+            if (re.fullmatch(r"(prompt|pre|post|fail|end)-[\w-]*-[\w.-]+", n) and stat.S_ISREG(st.st_mode)
+                    and time.time() - st.st_mtime > 3600):
                 os.remove(fp)
     except OSError:
         pass
@@ -753,11 +807,8 @@ def run_hook(mode: str) -> None:
         if not qdir:
             return  # opt-in: no queue in this project, so qq does nothing
         q = Q(qdir)
-        if q.disabled() or not q.safe():
-            return
-        if tracked_by_git(q.dir):
-            q.log("inactive: .qq/ is tracked by git (cards from a clone are never injected into prompts)")
-            return
+        if not trusted(q.dir) or q.disabled() or not q.safe():
+            return  # untrusted (not created by this user with qq), paused, or unsafe: stay silent
         handler = {"prompt": hook_prompt, "pre": hook_pre, "post": hook_post, "fail": hook_fail, "end": hook_end}.get(mode)
         if handler is None:
             return
@@ -800,7 +851,7 @@ def need(q: Q, cid: str, *folders):
 
 
 def cmd_new(q, a):
-    q.ensure()
+    q.ensure(trust_it=True)
     slug = re.sub(r"[^a-z0-9-]+", "-", a.slug.lower()).strip("-")[:40] or "question"
     cid = new_card_id(q)
     path = os.path.join(q.open, f"{cid}-{slug}.md")
@@ -817,7 +868,7 @@ def cmd_new(q, a):
 
 
 def cmd_init(q, _a):
-    q.ensure()
+    q.ensure(trust_it=True)
     print(f"qq: queue ready at {q.dir}. qq's hooks are now active in this repository.")
 
 
@@ -827,7 +878,7 @@ def cmd_path(q, _a):
 
 def cmd_list(q, _a):
     if not os.path.isdir(q.dir):
-        print("qq: no .qq/ folder in this project yet (qq new creates it).")
+        print("qq: no queue in this repository yet. Run `qq init` to turn qq on here.")
         return
     for name, folder in (("open", q.open), ("asking", q.asking), ("closed", q.closed)):
         items = q.cards(folder)
@@ -913,6 +964,12 @@ HOOK_EVENTS = (("UserPromptSubmit", None, "prompt"), ("PreToolUse", "AskUserQues
 
 def cmd_setup(_q, a):
     settings_path = os.path.expanduser("~/.claude/settings.json")
+    home = os.path.realpath(os.path.expanduser("~"))  # SCRIPT is a realpath, so compare like with like
+    user_dirs = [os.path.join(home, d) for d in (".claude", ".agents", ".codex", ".config")]
+    if not a.remove and not any(SCRIPT.startswith(d + os.sep) for d in user_dirs):
+        raise SystemExit(f"qq: this copy of qq lives inside a project ({os.path.dirname(SCRIPT)}), so wiring it into your "
+                         "user settings would break every other project. Install qq for your user (the Claude Code "
+                         "plugin, or `npx skills add bartawilly/qq -g`) and run setup from that copy.")
     try:
         with open(os.path.expanduser("~/.claude/plugins/installed_plugins.json")) as fh:
             plugins = (json.load(fh) or {}).get("plugins", {})
@@ -964,7 +1021,7 @@ def main() -> None:
         sys.exit(0)
     ap = argparse.ArgumentParser(prog="qq", description="A question queue for coding agents.")
     ap.add_argument("--version", action="version", version=f"qq {VERSION}")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("init", help="start a queue in this repository")
     sub.add_parser("path", help="print where the queue lives")
     s = sub.add_parser("new", help="create a card"); s.add_argument("slug"); s.add_argument("--title"); s.add_argument("--owner"); s.add_argument("--blocks")
@@ -978,7 +1035,7 @@ def main() -> None:
     for name in ("away", "back", "off", "on"):
         sub.add_parser(name)
     s = sub.add_parser("setup", help="wire hooks into Claude Code"); s.add_argument("--remove", action="store_true")
-    a = ap.parse_args()
+    a = ap.parse_args(sys.argv[1:] or ["list"])
     q = Q(queue_home())
     {"init": cmd_init, "path": cmd_path, "new": cmd_new, "list": cmd_list, "claim": cmd_claim, "answer": cmd_answer, "reopen": cmd_reopen,
      "release": cmd_release, "withdraw": cmd_withdraw, "away": cmd_away, "back": cmd_back, "off": cmd_off,

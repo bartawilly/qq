@@ -26,6 +26,8 @@ Both layers share one folder in the project, `.qq/`, kept out of git by its own 
 
 If none is found, qq does nothing. `qq init` (or the first `qq new`) creates the queue.
 
+**Trust, and failing closed.** Hooks act only on a queue listed in `~/.config/qq/trusted-queues`. That file is written only when this user runs `qq init` or `qq new`, so a `.qq/` that arrives with a clone, a download or another user can never inject card text into prompts. The walk up stops at the repository's top level and never enters `$HOME`. On POSIX, a queue must also be owned by the user and not writable by group or others.
+
 ```
 .qq/
   open/      cards waiting to be asked        Q0001-<slug>.md
@@ -89,6 +91,11 @@ Ids are sequential (`Q0001`, `Q0002`, …), reserved with `O_EXCL` in `.qq/.stat
 - **Safe to install twice** (plugin plus `setup`): tool events dedupe on `tool_use_id`, the handlers are idempotent, and a prompt reminder prints once.
 - **Windows:** there is no process-liveness check, because `os.kill(pid, 0)` would send Ctrl-C there. A crashed asker's claim is freed after 2 h.
 
+## Known residuals
+
+- **A resumed transcript:** if its old part carries `promptSource` and new entries don't, a typed prompt may go unconfirmed. The asking session's own-transcript check and the 60-minute window limit the effect.
+- **A process id reused after a crash** could make a dead asker look alive until the 2-hour fallback.
+
 ## Not handled (on purpose)
 
 | Case | Why |
@@ -102,7 +109,7 @@ Ids are sequential (`Q0001`, `Q0002`, …), reserved with `O_EXCL` in `.qq/.stat
 | Route | Gives | Notes |
 |---|---|---|
 | **Claude Code plugin** (`/plugin marketplace add bartawilly/qq`, then `/plugin install qq@qq`) | Skill, CLI and hooks | The full version. Hooks are wired by the plugin system and updated with the plugin |
-| **skills.sh** (`npx skills add bartawilly/qq`) in Claude Code | Skill and CLI. Hooks after one command: `qq.py setup` | Setup adds four hook entries to `~/.claude/settings.json`: idempotent, backed up first, undone by `qq.py setup --remove`. It refuses when the qq plugin is already installed, so hooks never run twice. This is the same pattern other hook-bearing skills use (a plugin auto-wires; a skill copy wires with one command) |
+| **skills.sh** (`npx skills add bartawilly/qq -g`) in Claude Code | Skill and CLI. Hooks after one command: `qq.py setup` | Setup adds four hook entries to `~/.claude/settings.json`: idempotent, backed up first, undone by `qq.py setup --remove`. It refuses when the qq plugin is already installed, so hooks never run twice. This is the pattern hook-bearing skills already use: a plugin auto-wires, a skill copy wires with one command (e.g. [agentops cc-hooks](https://claudeskills.info/skill/cc-hooks/)). Setup refuses a copy installed inside a project, because wiring that path into user settings would break other projects |
 | **skills.sh** in Codex, Cursor, Gemini CLI and others | Skill and CLI | The protocol works through `qq.py`, but there is no automatic gate. Codex has hooks of its own, so wiring qq to them is a later step once its question tool and hook payloads are verified |
 
 The README states this table plainly, so nobody believes they are protected by checks they don't have.

@@ -25,7 +25,8 @@ Q = os.path.join(PROJ, ".qq")
 ST = os.path.join(Q, ".state")
 TP = os.path.join(T, "session.jsonl")
 open(TP, "w").close()
-ENV = dict(os.environ, CLAUDE_PROJECT_DIR=PROJ, HOME=HOME, QQ_SESSIONS_DIR=SESS, QQ_CONFIRM_DELAYS="1,1,1,1")
+ENV = dict(os.environ, CLAUDE_PROJECT_DIR=PROJ, HOME=HOME, QQ_SESSIONS_DIR=SESS, QQ_CONFIRM_DELAYS="1,1,1,1",
+           XDG_CONFIG_HOME=os.path.join(T, "config"))
 json.dump({"sessionId": "LIVE", "pid": os.getpid(), "name": "live-lead"}, open(os.path.join(SESS, f"{os.getpid()}.json"), "w"))
 json.dump({"sessionId": "DEAD", "pid": 999999, "name": "dead-lead"}, open(os.path.join(SESS, "999999.json"), "w"))
 
@@ -129,6 +130,15 @@ def body(name):
 
 
 try:
+    # --- trust: only queues created with qq count ---
+    os.makedirs(os.path.join(Q, "open"))
+    with open(os.path.join(Q, "open", "Q0001-planted.md"), "w") as fh:
+        fh.write("# Q0001 · planted card\n")
+    check("a .qq/ not created by qq is ignored (fail closed)", hook("prompt", session_id="X", prompt="hello").strip() == ""
+          and hook("pre", session_id="X", tool_input=dict(questions=[dict(question="x", header="Fees")])) == "")
+    os.remove(os.path.join(Q, "open", "Q0001-planted.md"))
+    check("qq init trusts the queue", cli("init").returncode == 0)
+
     # --- gate: presence, claim, races ---
     card("Q900001")
     check("away (no presence) -> deny", denied(hook("pre", session_id="LIVE", tool_input=box("Q900001"))))
@@ -278,9 +288,16 @@ try:
     check("qq withdraw closes with a reason", cli("withdraw", cid, "moot").returncode == 0 and "Withdrawn:" in body(os.path.basename(out)))
     check("qq list runs", "open/" in cli("list").stdout)
 
-    # --- setup ---
+    # --- setup (from a user-level copy, as a real install would be) ---
     settings = os.path.join(HOME, ".claude", "settings.json")
     os.makedirs(os.path.dirname(settings))
+    r = cli("setup")
+    check("setup refuses a copy that lives inside a project", r.returncode != 0 and "inside a project" in (r.stderr + r.stdout))
+    user_copy = os.path.join(HOME, ".agents", "skills", "qq", "scripts", "qq.py")
+    os.makedirs(os.path.dirname(user_copy)); shutil.copy(QQ, user_copy)
+
+    def cli(*args):  # noqa: F811 - setup runs from the user-level copy from here on
+        return subprocess.run([sys.executable, user_copy, *args], capture_output=True, text=True, env=ENV, cwd=PROJ)
     with open(settings, "w") as fh:
         json.dump({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "other-guard"}]}]}, "theme": "dark"}, fh)
     cli("setup"); cli("setup")
@@ -359,6 +376,29 @@ try:
     rm("Q0098-t.md")
     os.chmod(settings, 0o600); cli("setup", "--remove")
     check("setup keeps the settings file private", oct(os.stat(settings).st_mode & 0o777) == "0o600")
+    # --- root resolution and robustness ---
+    os.makedirs(os.path.join(HOME, ".qq", "open"))
+    proj2 = os.path.join(HOME, "work", "app"); os.makedirs(proj2)
+    check("walk-up stops at HOME (a stray ~/.qq is ignored)", hook_env("pre", dict(ENV, CLAUDE_PROJECT_DIR=proj2), session_id="LIVE", cwd=proj2, tool_input=dict(questions=[dict(question="x", header="Fees")])) == "")
+    sub = os.path.join(repo, "apps", "api"); os.makedirs(sub)
+    env_sub = dict(ENV, CLAUDE_PROJECT_DIR=sub)
+    made = run(sys.executable, QQ, "new", "from-sub", cwd=sub, env={k: v for k, v in ENV.items() if k != "CLAUDE_PROJECT_DIR"}).stdout.strip()
+    check("CLI in a subfolder writes to the repository's queue", made.startswith(os.path.join(repo, ".qq")) or made.startswith(os.path.realpath(os.path.join(repo, ".qq"))))
+    cid = os.path.basename(made)[:5]
+    out = hook_env("pre", env_sub, session_id="LIVE", cwd=sub, tool_input=box(cid))
+    check("hooks in a subfolder session find the same queue (no 'no card file')", "no card file" not in out)
+    r = subprocess.run([sys.executable, QQ, "list"], capture_output=True, text=True, cwd=PROJ, env=dict(ENV, QQ_CONFIRM_DELAYS="oops"))
+    check("bad QQ_CONFIRM_DELAYS does not crash", r.returncode == 0)
+    check("no arguments means list", "open/" in subprocess.run([sys.executable, QQ], capture_output=True, text=True, cwd=PROJ, env=ENV).stdout)
+    card("Q0099"); present(); clear_told()
+    o1 = hook("prompt", session_id="DUP", prompt="yes")
+    with open(TP, "a") as fh:
+        fh.write("{}\n")
+    clear_told()
+    o2 = hook("prompt", session_id="DUP", prompt="yes")
+    check("a later identical prompt is not swallowed by the de-dup", bool(o1.strip()) and bool(o2.strip()))
+    rm("Q0099-t.md")
+    check("/qq command ships with the plugin", os.path.exists(os.path.join(HERE, "..", "plugins", "qq", "commands", "qq.md")))
 finally:
     shutil.rmtree(T, ignore_errors=True)
 
