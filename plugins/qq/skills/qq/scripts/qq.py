@@ -165,11 +165,29 @@ def identity(qdir: str) -> str:
     return f"{real}\t{st.st_dev}\t{st.st_ino}"
 
 
+def nonce_path(qdir: str) -> str:
+    return os.path.join(qdir, ".state", "trust-nonce")
+
+
+def read_nonce(qdir: str) -> str:
+    try:
+        with open(nonce_path(qdir), encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
 def trusted(qdir: str) -> bool:
     """Fail closed: hooks act only on queues this user created with qq, never on a .qq/ that
-    arrived with a clone or a download, so nobody can plant questions in your prompts."""
+    arrived with a clone or a download, so nobody can plant questions in your prompts.
+
+    The entry is path + device + inode + a random nonce stored inside the queue. Inodes can be
+    reused (ext4), so the nonce is what makes a deleted-and-replaced folder untrusted."""
+    nonce = read_nonce(qdir)
+    if not nonce:
+        return False
     try:
-        me = identity(qdir)
+        me = f"{identity(qdir)}\t{nonce}"
         with open(TRUST_FILE, encoding="utf-8") as fh:
             return me in {line.rstrip("\n") for line in fh}
     except OSError:
@@ -202,8 +220,15 @@ SANDBOX_NOTE = ("qq: couldn't use the trust list in {where} (read-only here?). T
 def trust(qdir: str) -> None:
     if trusted(qdir):
         return
-    os.makedirs(os.path.dirname(TRUST_FILE), exist_ok=True)
-    append(TRUST_FILE, identity(qdir) + "\n")
+    import secrets
+    nonce = secrets.token_hex(16)
+    os.makedirs(os.path.dirname(TRUST_FILE), exist_ok=True)  # fail before touching the queue if unwritable
+    with open(TRUST_FILE, "a", encoding="utf-8"):
+        pass
+    os.makedirs(os.path.dirname(nonce_path(qdir)), exist_ok=True)
+    with os.fdopen(os.open(nonce_path(qdir), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | NOFOLLOW, 0o600), "w") as fh:
+        fh.write(nonce + "\n")
+    append(TRUST_FILE, f"{identity(qdir)}\t{nonce}\n")
 
 
 def owned_privately(path: str) -> bool:
