@@ -10,7 +10,7 @@ Every question for the human is a **card**: one small Markdown file in the proje
 
 The helper sits next to this file: `scripts/qq.py` (Python 3.9+, no dependencies). Below, `qq` means `python3 <this skill's folder>/scripts/qq.py`.
 
-qq is **opt-in per repository**: it does nothing until the repository has a queue. `qq init` creates one (in Claude Code with the plugin, the human can type `/qq init`), and so does the first `qq new`. Linked git worktrees share the main worktree's queue. `qq path` shows where it is. qq only trusts queues created this way, never a `.qq/` that came with a clone.
+qq is **opt-in per repository**: it does nothing until the repository has a queue. `qq init` creates one (in Claude Code with the plugin, the human can type `/qq init`), and so does the first `qq new`. Linked git worktrees share the main worktree's queue. `qq path` shows where it is. qq only trusts a queue it created itself, never a `.qq/` that was already there (a clone, a download). If qq refuses an existing `.qq/`, tell the human. Only they may run `qq init --trust-existing`, after looking inside it; never run it yourself.
 
 ```
 .qq/open/     waiting to be asked

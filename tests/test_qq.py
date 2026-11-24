@@ -136,8 +136,8 @@ try:
         fh.write("# Q0001 · planted card\n")
     check("a .qq/ not created by qq is ignored (fail closed)", hook("prompt", session_id="X", prompt="hello").strip() == ""
           and hook("pre", session_id="X", tool_input=dict(questions=[dict(question="x", header="Fees")])) == "")
-    os.remove(os.path.join(Q, "open", "Q0001-planted.md"))
-    check("qq init trusts the queue", cli("init").returncode == 0)
+    shutil.rmtree(Q)
+    check("qq init creates and trusts a fresh queue", cli("init").returncode == 0)
 
     # --- gate: presence, claim, races ---
     card("Q900001")
@@ -399,6 +399,33 @@ try:
     check("a later identical prompt is not swallowed by the de-dup", bool(o1.strip()) and bool(o2.strip()))
     rm("Q0099-t.md")
     check("/qq command ships with the plugin", os.path.exists(os.path.join(HERE, "..", "plugins", "qq", "commands", "qq.md")))
+    # --- re-ask after a typed answer, folder of repos, home, tracked queue ---
+    present(); card("Q0100"); hook("pre", session_id="LIVE", tool_use_id="r1", tool_input=box("Q0100"))
+    hook("post", session_id="LIVE", tool_use_id="r1", tool_input=box("Q0100"), tool_response={"questions": [], "answers": {L: "why not cheaper?"}, "annotations": {}})
+    check("re-ask of own answered card allowed", not denied(hook("pre", session_id="LIVE", tool_use_id="r2", tool_input=box("Q0100"))))
+    hook("post", session_id="LIVE", tool_use_id="r2", tool_input=box("Q0100"), tool_response={"questions": [], "answers": {L: "1. Add (Recommended)"}, "annotations": {}})
+    check("after a typed answer, the re-asked pick is recorded and closes the card", where("Q0100-t.md") == "closed" and body("Q0100-t.md").count("## Answer") == 2)
+    rm("Q0100-t.md")
+    work = os.path.join(T, "work"); os.makedirs(work)
+    run(sys.executable, QQ, "init", cwd=work, env={k: v for k, v in ENV.items() if k != "CLAUDE_PROJECT_DIR"})
+    inner = os.path.join(work, "repoA"); os.makedirs(inner); run("git", "init", "-q", cwd=inner)
+    check("a queue in a folder of repos does not gate the repos inside", hook_env("pre", dict(ENV, CLAUDE_PROJECT_DIR=inner), session_id="LIVE", cwd=inner, tool_input=dict(questions=[dict(question="x", header="Fees")])) == "")
+    r = run(sys.executable, QQ, "init", cwd=HOME, env={k: v for k, v in ENV.items() if k != "CLAUDE_PROJECT_DIR"})
+    check("qq refuses to put a queue in $HOME", r.returncode != 0 and "home folder" in r.stderr)
+    r = run(sys.executable, QQ, "list", cwd=tracked, env=dict(ENV, CLAUDE_PROJECT_DIR=tracked))
+    check("CLI refuses a git-tracked queue", r.returncode != 0 and "committed to git" in r.stderr)
+    plain = os.path.join(T, "plain"); os.makedirs(os.path.join(plain, ".qq", "closed"))
+    r = run(sys.executable, QQ, "list", cwd=plain, env=dict(ENV, CLAUDE_PROJECT_DIR=plain))
+    check("CLI refuses an untrusted queue until qq init", r.returncode != 0 and "qq init" in r.stderr)
+    # --- trust is never granted to a .qq/ that already existed ---
+    planted = os.path.join(T, "planted"); os.makedirs(os.path.join(planted, ".qq", "open"))
+    env_pl = dict(ENV, CLAUDE_PROJECT_DIR=planted)
+    r = run(sys.executable, QQ, "new", "x", cwd=planted, env=env_pl)
+    check("qq new refuses to adopt an existing untrusted .qq/", r.returncode != 0 and "trust-existing" in r.stderr)
+    check("...and the planted queue stays untrusted", hook_env("prompt", env_pl, session_id="P", cwd=planted, prompt="hello").strip() == "")
+    check("qq init --trust-existing (typed by the human) trusts it", run(sys.executable, QQ, "init", "--trust-existing", cwd=planted, env=env_pl).returncode == 0)
+    shutil.rmtree(os.path.join(planted, ".qq")); os.makedirs(os.path.join(planted, ".qq", "open"))
+    check("a queue replaced at the same path is no longer trusted", run(sys.executable, QQ, "list", cwd=planted, env=env_pl).returncode != 0)
 finally:
     shutil.rmtree(T, ignore_errors=True)
 

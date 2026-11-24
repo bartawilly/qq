@@ -118,9 +118,9 @@ def find_queue(cwd: str = ""):
     env = os.environ.get("QQ_DIR")
     if env:
         return env if os.path.isdir(env) else None
-    here = os.path.abspath(start_dir(cwd))
-    home = os.path.abspath(os.path.expanduser("~"))
-    top = os.path.abspath(git(here, "rev-parse", "--show-toplevel") or here)
+    here = os.path.realpath(start_dir(cwd))  # git prints real paths; compare like with like
+    home = os.path.realpath(os.path.expanduser("~"))
+    top = os.path.realpath(git(here, "rev-parse", "--show-toplevel") or here)
     while here != home:  # walk up only to the repository's top level, never into $HOME
         cand = os.path.join(here, ".qq")
         if os.path.isdir(cand):
@@ -136,7 +136,7 @@ def find_queue(cwd: str = ""):
 
 
 def queue_home(cwd: str = "") -> str:
-    """Where a new queue is created: QQ_DIR, else the main worktree's top level, else here."""
+    """Where a new queue is created: QQ_DIR, else the main worktree's top level, else here (never $HOME)."""
     found = find_queue(cwd)
     if found:
         return found
@@ -144,29 +144,43 @@ def queue_home(cwd: str = "") -> str:
     if env:
         return env
     top = main_worktree(start_dir(cwd))
-    return os.path.join(top or os.path.abspath(start_dir(cwd)), ".qq")
+    root = top or os.path.abspath(start_dir(cwd))
+    if os.path.realpath(root) == os.path.realpath(os.path.expanduser("~")):
+        raise SystemExit("qq: refusing to put a queue in your home folder. Run qq inside a project, or set QQ_DIR.")
+    return os.path.join(root, ".qq")
+
+
+def tracked_by_git(qdir: str) -> bool:
+    return bool(git(os.path.dirname(qdir), "ls-files", "--", os.path.basename(qdir)))
 
 
 TRUST_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "qq", "trusted-queues")
 
 
+def identity(qdir: str) -> str:
+    """A queue's identity: its real path plus the folder's device and inode, so a folder deleted
+    and replaced at the same path (a re-clone, a branch switch) is not trusted."""
+    real = os.path.realpath(qdir)
+    st = os.stat(real)
+    return f"{real}\t{st.st_dev}\t{st.st_ino}"
+
+
 def trusted(qdir: str) -> bool:
-    """Fail closed: hooks act only on queues this user created with qq (init/new), never on a
-    .qq/ that arrived with a clone or a download, so nobody can plant questions in your prompts."""
+    """Fail closed: hooks act only on queues this user created with qq, never on a .qq/ that
+    arrived with a clone or a download, so nobody can plant questions in your prompts."""
     try:
+        me = identity(qdir)
         with open(TRUST_FILE, encoding="utf-8") as fh:
-            known = {line.strip() for line in fh if line.strip()}
+            return me in {line.rstrip("\n") for line in fh}
     except OSError:
         return False
-    return os.path.realpath(qdir) in known
 
 
 def trust(qdir: str) -> None:
-    real = os.path.realpath(qdir)
-    if trusted(real):
+    if trusted(qdir):
         return
     os.makedirs(os.path.dirname(TRUST_FILE), exist_ok=True)
-    append(TRUST_FILE, real + "\n")
+    append(TRUST_FILE, identity(qdir) + "\n")
 
 
 def owned_privately(path: str) -> bool:
@@ -193,10 +207,23 @@ class Q:
         self.log_file = os.path.join(self.state, "hook.log")
         self.ids = os.path.join(self.state, "ids")
 
-    def ensure(self, trust_it: bool = False) -> None:
+    def ensure(self, create: bool = False) -> None:
+        """Create the subfolders. With create=True (qq init/new), trust the queue only if THIS call
+        created the .qq/ folder; an existing untrusted .qq/ is refused (it may have been planted)."""
+        made = False
+        if create and not os.path.isdir(self.dir):
+            os.makedirs(os.path.dirname(self.dir), exist_ok=True)
+            try:
+                os.mkdir(self.dir, 0o755)
+                made = True
+            except FileExistsError:
+                pass
+        if create and not made and not trusted(self.dir):
+            raise SystemExit(f"qq: {self.dir} already exists but was not created by you with qq. Look inside it; "
+                             "if it is yours, run `qq init --trust-existing` yourself (agents must not), else delete it.")
         for d in (self.open, self.asking, self.closed, self.state, self.ids):
             os.makedirs(d, exist_ok=True)
-        if trust_it:
+        if made:
             trust(self.dir)
         ignore = os.path.join(self.dir, ".gitignore")
         if not os.path.exists(ignore):
@@ -679,6 +706,9 @@ def hook_pre(q: Q, data: dict) -> None:
         elif folder == q.asking:
             if asker(path) != sid:
                 reasons.append(f"{cid} is being asked by {asker_name(path)} right now; drop it from this box.")
+            elif answered_since_claim(read(path)):
+                # re-asking your own card after a typed answer: a fresh claim, so the next answer is recorded
+                append(path, f"\n- Asker-session: {sid}\n- Asked: {fmt(t)} (re-asked)\n")
         else:
             try:
                 target = move(path, q.asking)
@@ -807,8 +837,8 @@ def run_hook(mode: str) -> None:
         if not qdir:
             return  # opt-in: no queue in this project, so qq does nothing
         q = Q(qdir)
-        if not trusted(q.dir) or q.disabled() or not q.safe():
-            return  # untrusted (not created by this user with qq), paused, or unsafe: stay silent
+        if not trusted(q.dir) or q.disabled() or not q.safe() or tracked_by_git(q.dir):
+            return  # untrusted, paused, unsafe, or committed to git: stay silent
         handler = {"prompt": hook_prompt, "pre": hook_pre, "post": hook_post, "fail": hook_fail, "end": hook_end}.get(mode)
         if handler is None:
             return
@@ -851,7 +881,7 @@ def need(q: Q, cid: str, *folders):
 
 
 def cmd_new(q, a):
-    q.ensure(trust_it=True)
+    q.ensure(create=True)
     slug = re.sub(r"[^a-z0-9-]+", "-", a.slug.lower()).strip("-")[:40] or "question"
     cid = new_card_id(q)
     path = os.path.join(q.open, f"{cid}-{slug}.md")
@@ -867,8 +897,14 @@ def cmd_new(q, a):
     print(path)
 
 
-def cmd_init(q, _a):
-    q.ensure(trust_it=True)
+def cmd_init(q, a):
+    if a.trust_existing and os.path.isdir(q.dir) and not trusted(q.dir):
+        if tracked_by_git(q.dir):
+            raise SystemExit(f"qq: {q.dir} is committed to git; qq will not trust it.")
+        q.ensure()
+        trust(q.dir)
+    else:
+        q.ensure(create=True)
     print(f"qq: queue ready at {q.dir}. qq's hooks are now active in this repository.")
 
 
@@ -1022,7 +1058,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="qq", description="A question queue for coding agents.")
     ap.add_argument("--version", action="version", version=f"qq {VERSION}")
     sub = ap.add_subparsers(dest="cmd")
-    sub.add_parser("init", help="start a queue in this repository")
+    s = sub.add_parser("init", help="start a queue in this repository")
+    s.add_argument("--trust-existing", action="store_true", help="trust a .qq/ you made yourself (humans only)")
     sub.add_parser("path", help="print where the queue lives")
     s = sub.add_parser("new", help="create a card"); s.add_argument("slug"); s.add_argument("--title"); s.add_argument("--owner"); s.add_argument("--blocks")
     s.add_argument("--quick", action="store_true", help="a short card for an in-conversation clarification")
@@ -1037,6 +1074,12 @@ def main() -> None:
     s = sub.add_parser("setup", help="wire hooks into Claude Code"); s.add_argument("--remove", action="store_true")
     a = ap.parse_args(sys.argv[1:] or ["list"])
     q = Q(queue_home())
+    if a.cmd not in ("setup", "path") and os.path.isdir(q.dir):
+        if tracked_by_git(q.dir):
+            raise SystemExit(f"qq: {q.dir} is committed to git, so its cards came from someone else. qq won't use it.")
+        if not trusted(q.dir) and a.cmd not in ("init", "new"):
+            raise SystemExit(f"qq: {q.dir} was not created by you with qq. If you did create it, run `qq init` "
+                             "to trust it; otherwise remove it.")
     {"init": cmd_init, "path": cmd_path, "new": cmd_new, "list": cmd_list, "claim": cmd_claim, "answer": cmd_answer, "reopen": cmd_reopen,
      "release": cmd_release, "withdraw": cmd_withdraw, "away": cmd_away, "back": cmd_back, "off": cmd_off,
      "on": cmd_on, "setup": cmd_setup}[a.cmd](q, a)
