@@ -436,6 +436,14 @@ try:
     check("umask 002: init still reports hooks active", "hooks: active" in r.stdout)
     check("umask 002: the gate really is on", denied(hook_env("pre", env_um, session_id="LIVE", cwd=um, tool_input=dict(questions=[dict(question="x", header="Fees")]))))
     check("queue folder is owner-only", oct(os.stat(os.path.join(um, ".qq")).st_mode & 0o777) == "0o700")
+    def hook_umask(mode, env, **d):
+        d.setdefault("transcript_path", TP)
+        return subprocess.run(["sh", "-c", f"umask 002 && exec {sys.executable} {QQ} hook {mode}"], input=json.dumps(d),
+                              capture_output=True, text=True, env=env).stdout
+    nobox = dict(questions=[dict(question="x", header="Fees")])
+    first = hook_umask("pre", env_um, session_id="LIVE", cwd=um, tool_use_id="u1", tool_input=nobox)
+    second = hook_umask("pre", env_um, session_id="LIVE", cwd=um, tool_use_id="u2", tool_input=nobox)
+    check("umask 002 in the hook process: the gate stays on after its first run", denied(first) and denied(second))
     ro = os.path.join(T, "roconf"); os.makedirs(ro); os.chmod(ro, 0o500)
     sand = os.path.join(T, "sandboxed"); os.makedirs(sand)
     r = run(sys.executable, QQ, "new", "x", "--title", "t", cwd=sand, env=dict(ENV, CLAUDE_PROJECT_DIR=sand, XDG_CONFIG_HOME=ro))

@@ -184,14 +184,14 @@ def trust(qdir: str) -> None:
 
 
 def owned_privately(path: str) -> bool:
-    """POSIX: the queue must belong to this user and not be writable by others."""
+    """POSIX: owned by this user and not writable by group or others (qq creates its folders 0700)."""
     if os.name == "nt":
         return True
     try:
         st = os.lstat(path)
     except OSError:
         return False
-    return st.st_uid == os.getuid() and not (st.st_mode & 0o002)  # group-writable is fine (umask 002)
+    return st.st_uid == os.getuid() and not (st.st_mode & 0o022)
 
 
 class Q:
@@ -225,6 +225,7 @@ class Q:
         for d in (self.open, self.asking, self.closed, self.state, self.ids):
             if not os.path.isdir(d):
                 os.makedirs(d, 0o700, exist_ok=True)
+                os.chmod(d, 0o700)
         if made:
             try:
                 trust(self.dir)
@@ -250,7 +251,7 @@ class Q:
     def safe(self) -> bool:
         """Refuse a queue whose folders are symlinks (they could point anywhere)."""
         parts = (self.dir, self.open, self.asking, self.closed, self.state, self.ids, os.path.join(self.state, "runs"))
-        return not any(os.path.islink(p) for p in parts) and owned_privately(self.dir)
+        return not any(os.path.islink(p) for p in parts) and all(owned_privately(p) for p in parts if os.path.exists(p))
 
     def find(self, cid: str):
         for folder in (self.open, self.asking, self.closed):
@@ -811,7 +812,9 @@ def first_run(q: Q, mode: str, data: dict) -> bool:
         return True
     import stat
     d = os.path.join(q.state, "runs")
-    os.makedirs(d, exist_ok=True)
+    if not os.path.isdir(d):
+        os.makedirs(d, 0o700, exist_ok=True)
+        os.chmod(d, 0o700)
     if os.path.islink(d):
         return True
     try:
