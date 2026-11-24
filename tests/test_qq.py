@@ -281,6 +281,15 @@ try:
     hook("prompt", session_id="LIVE", prompt="a scheduled claude -p job")
     time.sleep(2.5)
     check("headless claude -p run never counts as the human being here", last_human().startswith("100"))
+    with open(os.path.join(ST, "last-human"), "w") as fh:
+        fh.write("100\n")
+    hook("prompt", session_id="LIVE", prompt="typed in the desktop app")
+    time.sleep(0.5)
+    with open(TP, "a") as fh:
+        fh.write(json.dumps({"type": "user", "entrypoint": "claude-desktop", "promptSource": "sdk", "origin": {"kind": "human"},
+                             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()), "message": {"content": "typed in the desktop app"}}) + "\n")
+    time.sleep(2.5)
+    check("desktop app prompt typed by a person counts as presence", not last_human().startswith("100"))
     shutil.move(old2, TP)
 
     # --- CLI ---

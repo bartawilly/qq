@@ -96,6 +96,7 @@ Ids are sequential (`Q0001`, `Q0002`, …), reserved with `O_EXCL` in `.qq/.stat
 ## Known residuals
 
 - **A resumed transcript:** if its old part carries `promptSource` and new entries don't, a typed prompt may go unconfirmed. The asking session's own-transcript check and the 60-minute window limit the effect.
+- **Headless front ends:** `claude -p` and Agent SDK runs (entrypoint `sdk-*`) never count as presence, unless an entry carries `origin.kind: human`, as the desktop app's do. A custom SDK front end that relays a live person but doesn't set that marker gets "the human looks away"; `qq back` or `qq off` works around it.
 - **A process id reused after a crash** could make a dead asker look alive until the 2-hour fallback.
 
 ## Not handled (on purpose)

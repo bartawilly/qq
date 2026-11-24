@@ -505,6 +505,8 @@ def entry_ts(e: dict) -> float:
 
 
 def is_typed(e: dict) -> bool:
+    if (e.get("origin") or {}).get("kind") == "human":
+        return True  # e.g. the desktop app writes promptSource "sdk" for prompts a person typed
     if headless(e):
         return False
     return e.get("promptSource") in ("typed", "queued", "suggestion_accepted") or (e.get("origin") or {}).get("kind") == "human"
