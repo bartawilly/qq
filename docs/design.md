@@ -17,11 +17,18 @@ qq is a question queue for coding agents. Agents write each question they need a
 | **Portable core** (the skill + `qq.py` CLI) | Any agent that loads Agent Skills (Claude Code, Codex, Cursor, Gemini CLI, …) | Card template and rules; `qq new / claim / answer / release / list / away` keep the folder consistent; an atomic claim prevents double-asks |
 | **Enforcement** (the Claude Code plugin's hooks) | Claude Code | A gate on `AskUserQuestion`; automatic claim and answer recording; a reminder on each message; presence detection |
 
-Both layers share one folder in the project: `.qq/` (its own `.gitignore` keeps it out of git).
+Both layers share one folder in the project, `.qq/`, kept out of git by its own `.gitignore`.
+
+**Opt-in, one queue per repository.** The hooks act only where a queue already exists, and they never create one. The queue is found in this order:
+1. `QQ_DIR`;
+2. the nearest `.qq/` above the project folder;
+3. the `.qq/` of the repository's **main** worktree, so linked worktrees share one queue and parallel sessions can't double-ask.
+
+If none is found, qq does nothing. `qq init` (or the first `qq new`) creates the queue.
 
 ```
 .qq/
-  open/      cards waiting to be asked        Q<ddHHMM>-<slug>.md
+  open/      cards waiting to be asked        Q0001-<slug>.md
   asking/    claimed by the session asking now, or holding a typed answer it must act on
   closed/    answered or withdrawn
   .state/    presence timestamps, hook log (hook-managed)
@@ -42,11 +49,14 @@ One decision per card. The owner writes it, and anyone who asks it uses it word 
 
 `open → asking → closed`. Every move is a `rename(2)` in one folder tree, so it is atomic: when two sessions claim the same card, exactly one wins.
 
+Ids are sequential (`Q0001`, `Q0002`, …), reserved with `O_EXCL` in `.qq/.state/ids/`, so they never collide and never repeat.
+
 - **The claim:** made by the gate hook in Claude Code; elsewhere by `qq claim <id>` before asking.
 - **An option answer:** closes the card.
 - **A typed answer** (the human's own words): stays in `asking/` until the asking agent studies it, then applies it or re-asks an updated card.
 - **A dismissed or "clarify" box:** its claim is released on the human's next typed message (Claude Code), or by `qq release` (elsewhere).
-- **A dead asker's claim:** released after 30 min, when the session record shows its process is gone; after 2 h when liveness is unknown.
+- **A session that ends:** a `SessionEnd` hook releases its unanswered claims.
+- **A crashed asker's claim:** released after 30 min when its session record (`~/.claude/sessions`, POSIX only) shows the process is gone; otherwise after 2 h.
 
 ## Presence (Claude Code)
 
@@ -73,6 +83,11 @@ One decision per card. The owner writes it, and anyone who asks it uses it word 
 - **The only decision the gate ever emits is `deny`.** It never emits `allow`, because `allow` with `updatedInput` would answer the box on the human's behalf.
 - **Outside the project:** the hooks write only inside `.qq/`, and read only the session's own transcript and `~/.claude/sessions/*.json` (never key files).
 - **Per-project opt-out:** `qq off` writes `.qq/off`, and the hooks then stay silent.
+- **No planted cards:** a `.qq/` tracked by git is ignored, so a cloned repository can't inject card text into your prompts. Card text shown to agents is labelled as data and stripped of control characters.
+- **No symlink tricks:** symlinked queue folders and card files are refused, and every write uses `O_NOFOLLOW`.
+- **Settings stay private:** the backup and temp files `qq setup` writes are created private and keep the original file's mode.
+- **Safe to install twice** (plugin plus `setup`): tool events dedupe on `tool_use_id`, the handlers are idempotent, and a prompt reminder prints once.
+- **Windows:** there is no process-liveness check, because `os.kill(pid, 0)` would send Ctrl-C there. A crashed asker's claim is freed after 2 h.
 
 ## Not handled (on purpose)
 

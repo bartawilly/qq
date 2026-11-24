@@ -58,14 +58,20 @@ npx skills add bartawilly/qq
 | Answers recorded automatically | ✅ | — via `qq answer` |
 | Reminders when you come back | ✅ | — |
 
-Installed through skills.sh into Claude Code? Run `python3 <skill folder>/scripts/qq.py setup` once to add the hooks. It backs up your settings first, and `setup --remove` undoes it.
+**Then turn it on in a repository.** qq is opt-in, so nothing changes anywhere else:
 
-Needs Python 3.9+ (`python3`). No other dependencies.
+```bash
+python3 <skill folder>/scripts/qq.py init     # or just ask your agent: "use qq here"
+```
+
+Installed through skills.sh into Claude Code? Run `qq.py setup` once to add the hooks. It backs up your settings first, and `setup --remove` undoes it.
+
+Needs Python 3.9+ as `python3`, and nothing else. On a fresh Mac, `python3` may first prompt you to install Apple's command-line tools.
 
 ## A card
 
 ```markdown
-# Q241307 · Should a late cancellation still get a refund?
+# Q0007 · Should a late cancellation still get a refund?
 - Owner: billing-agent (payments lead)
 - Blocks: the refund-policy PR
 
@@ -108,11 +114,14 @@ flowchart LR
 | `QQ_MIN_OPTION` | `60` | Minimum length of each option's explanation |
 | `QQ_OWNER` | | Default owner name for `qq new` |
 
-`qq off` turns the hooks off in one project, and `qq on` turns them back on.
+`qq off` turns the hooks off in one project, and `qq on` turns them back on. Linked git worktrees share the main worktree's queue, so parallel sessions in worktrees still never double-ask.
+
+**To uninstall:** `/plugin uninstall qq@qq` (or `qq.py setup --remove` for a skills.sh install), then delete the `.qq/` folders you no longer need.
 
 ## What qq doesn't do
 
 - **No inbox app, no server, no account.** Cards are plain files you can read in any editor.
+- **Nothing in repositories you didn't opt in.** Without a `.qq/` folder, qq does nothing. A `.qq/` committed to git is ignored, so a cloned repository can never plant questions in your sessions.
 - **No enforcement outside Claude Code (yet).** Other agents follow the protocol through the skill and CLI. Hook support for Codex is the next step.
 - **Never answers for you.** The hooks only ever refuse a question box. They never fill one in.
 

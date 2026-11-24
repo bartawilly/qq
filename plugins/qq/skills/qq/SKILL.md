@@ -10,6 +10,8 @@ Every question for the human is a **card**: one small Markdown file in the proje
 
 The helper sits next to this file: `scripts/qq.py` (Python 3.9+, no dependencies). Below, `qq` means `python3 <this skill's folder>/scripts/qq.py`.
 
+qq is **opt-in per repository**: it does nothing until the repository has a queue. `qq init` creates one, and so does the first `qq new`. Linked git worktrees share the main worktree's queue. `qq path` shows where it is.
+
 ```
 .qq/open/     waiting to be asked
 .qq/asking/   claimed by the session asking it now (or holding a typed answer to act on)
@@ -27,7 +29,7 @@ Decide everything else yourself, with the simplest safe option, and say which yo
 
 ## 2. Write the card
 
-Run `qq new <slug> --title "<the question in one plain line>" --owner "<your session name and role>"`. It prints the card's path, and its id (e.g. `Q241307`) is the start of the file name. Fill in every section. **One decision per card.**
+Run `qq new <slug> --title "<the question in one plain line>" --owner "<your session name and role>"`. It prints the card's path, and its id (e.g. `Q0007`) is the start of the file name. For a quick clarification in a live conversation, `--quick` makes a two-line card. Fill in every section. **One decision per card.**
 
 - **Today, step by step:** what happens now, verified in the code or data. This is the section most often missing: the human does not carry your context.
 - **Who meets it, and how often**, and what goes wrong.
@@ -60,7 +62,7 @@ Run `qq new <slug> --title "<the question in one plain line>" --owner "<your ses
 - **Always leave room for the human's own answer.** They may pick an option, pick one and add a condition, discuss it, or propose something else. End the question with: `Other: write your own, or e.g. "1, plus a note".`
 
 **In Claude Code** (`AskUserQuestion`):
-- Set `header` to `<card id> <word>`, 12 characters at most (e.g. `Q241307 Fees`).
+- Set `header` to `<card id> <word>`, 12 characters at most (e.g. `Q0007 Fees`).
 - Up to 4 cards per box, on one topic.
 - Never set an option `preview`: preview boxes drop the free-text "Other" row.
 - Never add your own "Other" option; the tool adds one.
@@ -84,7 +86,9 @@ Run `qq new <slug> --title "<the question in one plain line>" --owner "<your ses
 
 | Command | What it does |
 |---|---|
-| `qq new <slug> --title "…"` | create a card and print its path |
+| `qq init` | start a queue in this repository (qq is opt-in) |
+| `qq path` | where this repository's queue lives |
+| `qq new <slug> --title "…"` | create a card and print its path (`--quick` for a short one) |
 | `qq list` | cards, and when the human last typed |
 | `qq claim <id>` | claim before asking (agents without the hooks) |
 | `qq answer <id> "<text>"` | record the answer and close the card |
