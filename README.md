@@ -135,7 +135,7 @@ Set them in your shell, or for Claude Code in `~/.claude/settings.json` under `"
 ## What qq doesn't do
 
 - **No inbox app, no server, no account.** Cards are plain files you can read in any editor.
-- **Nothing in repositories you didn't opt in.** qq acts only on queues you created with `qq init` or `qq new`; it keeps their list in `~/.config/qq/`. A `.qq/` that arrives with a clone or a download is ignored, so nobody can plant questions in your sessions.
+- **Nothing in repositories you didn't opt in.** qq acts only on queues you created with `qq init` or `qq new`; it keeps their list in `~/.config/qq/`. A `.qq/` that arrives with a clone or a download is ignored, so nobody can plant questions in your sessions. If one is yours, trust it from a normal terminal with `qq init --trust-existing` (it asks you to type the path).
 - **No enforcement outside Claude Code (yet).** Other agents follow the protocol through the skill and CLI. Hook support for Codex is the next step.
 - **Never answers for you.** The hooks only ever refuse a question box. They never fill one in.
 

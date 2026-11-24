@@ -176,6 +176,27 @@ def trusted(qdir: str) -> bool:
         return False
 
 
+def own_origin(qdir: str) -> bool:
+    """CLI-only fallback for sandboxes that can't write ~/.config: qq records the folder's
+    device and inode in .state/origin when it creates the queue. A copy that arrived in a clone
+    or zip has a new inode, so it never matches. Hooks never use this; they need real trust."""
+    try:
+        with open(os.path.join(qdir, ".state", "origin"), encoding="utf-8") as fh:
+            recorded = fh.read().strip()
+        st = os.stat(qdir)
+        return recorded == f"{st.st_dev}\t{st.st_ino}"
+    except OSError:
+        return False
+
+
+def usable_by_cli(qdir: str) -> bool:
+    return trusted(qdir) or (own_origin(qdir) and owned_privately(qdir) and not tracked_by_git(qdir))
+
+
+SANDBOX_NOTE = ("qq: couldn't use the trust list in {where} (read-only here?). The CLI keeps working on this queue, "
+                "but hooks stay off until the human runs `qq init --trust-existing` in their own terminal.")
+
+
 def trust(qdir: str) -> None:
     if trusted(qdir):
         return
@@ -219,7 +240,7 @@ class Q:
                 made = True
             except FileExistsError:
                 pass
-        if create and not made and not trusted(self.dir):
+        if create and not made and not usable_by_cli(self.dir):
             raise SystemExit(f"qq: {self.dir} already exists but was not created by qq on this machine. Tell the human: "
                              "they can inspect it and, if it is theirs, trust it from their own terminal; otherwise delete it.")
         for d in (self.open, self.asking, self.closed, self.state, self.ids):
@@ -227,12 +248,13 @@ class Q:
                 os.makedirs(d, 0o700, exist_ok=True)
                 os.chmod(d, 0o700)
         if made:
+            st = os.stat(self.dir)
+            with os.fdopen(os.open(os.path.join(self.state, "origin"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | NOFOLLOW, 0o600), "w") as fh:
+                fh.write(f"{st.st_dev}\t{st.st_ino}\n")
             try:
                 trust(self.dir)
             except OSError:
-                print(f"qq: couldn't record trust in {os.path.dirname(TRUST_FILE)} (read-only here?); the card is written, "
-                      "but hooks stay off here until the human trusts this queue from their own terminal.",
-                      file=sys.stderr)
+                print(SANDBOX_NOTE.format(where=os.path.dirname(TRUST_FILE)), file=sys.stderr)
         ignore = os.path.join(self.dir, ".gitignore")
         if not os.path.exists(ignore):
             with open(ignore, "w") as fh:
@@ -1106,9 +1128,11 @@ def main() -> None:
     if a.cmd not in ("setup", "path") and os.path.isdir(q.dir):
         if tracked_by_git(q.dir):
             raise SystemExit(f"qq: {q.dir} is committed to git, so its cards came from someone else. qq won't use it.")
-        if not trusted(q.dir) and a.cmd not in ("init", "new"):
+        if not usable_by_cli(q.dir) and a.cmd not in ("init", "new"):
             raise SystemExit(f"qq: {q.dir} was not created by qq on this machine. Tell the human; they can inspect it "
                              "and trust it from their own terminal, or delete it.")
+        if not trusted(q.dir) and own_origin(q.dir):
+            print(SANDBOX_NOTE.format(where=os.path.dirname(TRUST_FILE)), file=sys.stderr)
     {"init": cmd_init, "path": cmd_path, "new": cmd_new, "list": cmd_list, "claim": cmd_claim, "answer": cmd_answer, "reopen": cmd_reopen,
      "release": cmd_release, "withdraw": cmd_withdraw, "away": cmd_away, "back": cmd_back, "off": cmd_off,
      "on": cmd_on, "setup": cmd_setup}[a.cmd](q, a)

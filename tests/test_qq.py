@@ -447,7 +447,10 @@ try:
     ro = os.path.join(T, "roconf"); os.makedirs(ro); os.chmod(ro, 0o500)
     sand = os.path.join(T, "sandboxed"); os.makedirs(sand)
     r = run(sys.executable, QQ, "new", "x", "--title", "t", cwd=sand, env=dict(ENV, CLAUDE_PROJECT_DIR=sand, XDG_CONFIG_HOME=ro))
-    check("read-only config: qq new still writes the card and warns", r.returncode == 0 and r.stdout.strip().endswith(".md") and "couldn't record trust" in r.stderr)
+    check("read-only config: qq new still writes the card and warns", r.returncode == 0 and r.stdout.strip().endswith(".md") and "trust list" in r.stderr)
+    r2 = run(sys.executable, QQ, "new", "y", "--title", "t2", cwd=sand, env=dict(ENV, CLAUDE_PROJECT_DIR=sand, XDG_CONFIG_HOME=ro))
+    check("read-only config: a SECOND qq new also works (no lock-out in sandboxes)", r2.returncode == 0 and r2.stdout.strip().endswith(".md"))
+    check("read-only config: hooks stay off (no trust without the trust list)", hook_env("prompt", dict(ENV, CLAUDE_PROJECT_DIR=sand, XDG_CONFIG_HOME=ro), session_id="S", cwd=sand, prompt="hello").strip() == "")
     os.chmod(ro, 0o700)
     check("qq list shows the hook status", "hooks: active" in cli("list").stdout)
 finally:
