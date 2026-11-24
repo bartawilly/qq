@@ -30,7 +30,7 @@ import subprocess
 import sys
 import time
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 SCRIPT = os.path.realpath(__file__)  # skills.sh installs are symlinks; hooks need the real file
 
 ID_RE = re.compile(r"^\s*(Q\d{4,6})\b")
@@ -469,8 +469,13 @@ def liveness(sid: str):
 
 # ---------- transcript reading (Claude Code) ----------
 
+def headless(e: dict) -> bool:
+    """Headless runs (claude -p, the Agent SDK) record an sdk-* entrypoint; no human typed those."""
+    return str(e.get("entrypoint") or "").startswith("sdk")
+
+
 def user_entries(transcript: str, max_bytes: int = 400000):
-    """(entries with a promptSource field, newest first; whether any user entry existed at all)."""
+    """(entries with a promptSource field, newest first; whether any interactive user entry existed)."""
     with open(transcript, "rb") as fh:
         fh.seek(0, 2)
         start = max(0, fh.tell() - max_bytes)
@@ -485,7 +490,8 @@ def user_entries(transcript: str, max_bytes: int = 400000):
         except ValueError:
             continue
         if isinstance(e, dict) and e.get("type") == "user":
-            any_user = True
+            if not headless(e):
+                any_user = True
             if "promptSource" in e:
                 out.append(e)
     return out, any_user
@@ -499,6 +505,8 @@ def entry_ts(e: dict) -> float:
 
 
 def is_typed(e: dict) -> bool:
+    if headless(e):
+        return False
     return e.get("promptSource") in ("typed", "queued", "suggestion_accepted") or (e.get("origin") or {}).get("kind") == "human"
 
 

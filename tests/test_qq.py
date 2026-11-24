@@ -273,6 +273,15 @@ try:
     time.sleep(2.5)
     check("transcript without promptSource -> fail open (presence set)", not last_human().startswith("100"))
     shutil.move(old, TP)
+    with open(os.path.join(ST, "last-human"), "w") as fh:
+        fh.write("100\n")
+    old2 = TP + ".old2"; shutil.move(TP, old2)
+    with open(TP, "w") as fh:
+        fh.write(json.dumps({"type": "user", "entrypoint": "sdk-cli", "message": {"content": "a scheduled claude -p job"}}) + "\n")
+    hook("prompt", session_id="LIVE", prompt="a scheduled claude -p job")
+    time.sleep(2.5)
+    check("headless claude -p run never counts as the human being here", last_human().startswith("100"))
+    shutil.move(old2, TP)
 
     # --- CLI ---
     out = cli("new", "Fee Split!", "--title", "How should fees be split?", "--owner", "tester").stdout.strip()

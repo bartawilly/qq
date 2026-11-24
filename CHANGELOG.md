@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- **Headless runs never count as you being here.** `claude -p` and Agent SDK runs record an `sdk-*` entrypoint, so a scheduled job in a qq repository can no longer mark you present and let other sessions open question boxes while you're away. Found in the live install check.
+- **Trust entries carry a random nonce,** because file systems such as ext4 reuse inode numbers.
+- **CI tests Python 3.10 and 3.13** on Ubuntu and macOS.
+
 ## 0.1.0
 
 First public release.
