@@ -220,8 +220,8 @@ class Q:
             except FileExistsError:
                 pass
         if create and not made and not trusted(self.dir):
-            raise SystemExit(f"qq: {self.dir} already exists but was not created by you with qq. Look inside it; "
-                             "if it is yours, run `qq init --trust-existing` yourself (agents must not), else delete it.")
+            raise SystemExit(f"qq: {self.dir} already exists but was not created by qq on this machine. Tell the human: "
+                             "they can inspect it and, if it is theirs, trust it from their own terminal; otherwise delete it.")
         for d in (self.open, self.asking, self.closed, self.state, self.ids):
             if not os.path.isdir(d):
                 os.makedirs(d, 0o700, exist_ok=True)
@@ -230,7 +230,7 @@ class Q:
                 trust(self.dir)
             except OSError:
                 print(f"qq: couldn't record trust in {os.path.dirname(TRUST_FILE)} (read-only here?); the card is written, "
-                      "but hooks stay off in this repository until you run `qq init --trust-existing` outside the sandbox.",
+                      "but hooks stay off here until the human trusts this queue from their own terminal.",
                       file=sys.stderr)
         ignore = os.path.join(self.dir, ".gitignore")
         if not os.path.exists(ignore):
@@ -908,6 +908,12 @@ def cmd_init(q, a):
     if a.trust_existing and os.path.isdir(q.dir) and not trusted(q.dir):
         if tracked_by_git(q.dir):
             raise SystemExit(f"qq: {q.dir} is committed to git; qq will not trust it.")
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            raise SystemExit("qq: --trust-existing needs a person at an interactive terminal (agents can't run it). "
+                             "Ask the human to run it in their own terminal.")
+        typed = input(f"Trust {q.dir}? Look inside it first. Type its full path to confirm: ").strip()
+        if os.path.realpath(typed) != os.path.realpath(q.dir):
+            raise SystemExit("qq: path did not match; nothing trusted.")
         q.ensure()
         trust(q.dir)
     else:
@@ -922,7 +928,7 @@ def cmd_path(q, _a):
 def hook_status(q: Q) -> str:
     if not os.path.isdir(q.dir):
         return "inactive: no queue (run qq init)"
-    for bad, why in ((not trusted(q.dir), "untrusted (not created by you with qq; see qq init --trust-existing)"),
+    for bad, why in ((not trusted(q.dir), "untrusted (not created by qq here; the human can trust it from their terminal)"),
                      (q.disabled(), "off (qq on re-enables)"),
                      (not q.safe(), "unsafe folder (symlinked, or writable by other users)"),
                      (tracked_by_git(q.dir), "committed to git")):
@@ -1098,8 +1104,8 @@ def main() -> None:
         if tracked_by_git(q.dir):
             raise SystemExit(f"qq: {q.dir} is committed to git, so its cards came from someone else. qq won't use it.")
         if not trusted(q.dir) and a.cmd not in ("init", "new"):
-            raise SystemExit(f"qq: {q.dir} was not created by you with qq. If you did create it, run `qq init` "
-                             "to trust it; otherwise remove it.")
+            raise SystemExit(f"qq: {q.dir} was not created by qq on this machine. Tell the human; they can inspect it "
+                             "and trust it from their own terminal, or delete it.")
     {"init": cmd_init, "path": cmd_path, "new": cmd_new, "list": cmd_list, "claim": cmd_claim, "answer": cmd_answer, "reopen": cmd_reopen,
      "release": cmd_release, "withdraw": cmd_withdraw, "away": cmd_away, "back": cmd_back, "off": cmd_off,
      "on": cmd_on, "setup": cmd_setup}[a.cmd](q, a)

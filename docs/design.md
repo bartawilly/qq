@@ -28,7 +28,7 @@ If none is found, qq does nothing. `qq init` (or the first `qq new`) creates the
 
 **Trust, and failing closed.** Hooks act only on a queue listed in `~/.config/qq/trusted-queues`. Each entry is the queue's real path plus its folder's device and inode, so a folder replaced at the same path is not trusted.
 
-An entry is written only when `qq init` or `qq new` itself **creates** the `.qq/` folder. An existing untrusted `.qq/` is refused until the human runs `qq init --trust-existing`, and that refuses a queue committed to git. The hooks also ignore a git-tracked queue. So a `.qq/` that arrives with a clone, a download or another user can never inject card text into prompts. The walk up stops at the repository's top level and never enters `$HOME`. On POSIX, a queue must also be owned by the user and not writable by group or others.
+An entry is written only when `qq init` or `qq new` itself **creates** the `.qq/` folder. An existing untrusted `.qq/` is refused until the human runs `qq init --trust-existing` in an interactive terminal and types the folder's path to confirm; agents, which have no terminal, can't. It refuses a queue committed to git. The hooks also ignore a git-tracked queue. So a `.qq/` that arrives with a clone, a download or another user can never inject card text into prompts. The walk up stops at the repository's top level and never enters `$HOME`. On POSIX, a queue must also be owned by the user and not writable by group or others.
 
 ```
 .qq/
