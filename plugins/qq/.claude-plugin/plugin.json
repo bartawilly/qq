@@ -1,0 +1,11 @@
+{
+  "name": "qq",
+  "displayName": "qq: question queue",
+  "version": "0.1.0",
+  "description": "Your agents queue their questions as cards. qq asks each one exactly once, only while you're there, keeps the free-text answer row, and records what you said.",
+  "author": { "name": "bartawilly", "url": "https://github.com/bartawilly" },
+  "homepage": "https://github.com/bartawilly/qq",
+  "repository": "https://github.com/bartawilly/qq",
+  "license": "MIT",
+  "keywords": ["claude-code", "agent-skills", "questions", "human-in-the-loop", "askuserquestion", "multi-agent"]
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/qq/scripts/qq.py\" hook prompt", "timeout": 10 } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "AskUserQuestion", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/qq/scripts/qq.py\" hook pre", "timeout": 10 } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "AskUserQuestion", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/qq/scripts/qq.py\" hook post", "timeout": 10 } ] }
+    ],
+    "PostToolUseFailure": [
+      { "matcher": "AskUserQuestion", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/qq/scripts/qq.py\" hook fail", "timeout": 10 } ] }
+    ]
+  }
+}

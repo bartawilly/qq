@@ -1,0 +1,36 @@
+name: Bug report
+description: Something qq did wrong, or didn't do
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what qq did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. qq new ...\n2. ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options: [Claude Code (plugin), Claude Code (skills.sh + qq setup), Codex, Cursor, Gemini CLI, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Versions
+      placeholder: "qq --version, python3 --version, your agent's version, OS"
+  - type: textarea
+    id: log
+    attributes:
+      label: .qq/.state/hook.log (Claude Code)
+      description: Remove anything private before pasting.
+      render: text

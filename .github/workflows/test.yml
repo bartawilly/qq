@@ -1,0 +1,35 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.9", "3.13"]
+        exclude:
+          - os: macos-latest
+            python: "3.9"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile
+        run: python -m py_compile plugins/qq/skills/qq/scripts/qq.py
+      - name: Tests
+        run: python tests/test_qq.py
+      - name: Manifests are valid JSON
+        run: |
+          python -m json.tool .claude-plugin/marketplace.json > /dev/null
+          python -m json.tool plugins/qq/.claude-plugin/plugin.json > /dev/null
+          python -m json.tool plugins/qq/hooks/hooks.json > /dev/null

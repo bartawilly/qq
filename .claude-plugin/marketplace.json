@@ -1,0 +1,14 @@
+{
+  "name": "qq",
+  "description": "qq, the question queue for coding agents: questions wait as cards until you are back, each asked once, with your own answer always possible.",
+  "owner": { "name": "bartawilly", "url": "https://github.com/bartawilly" },
+  "plugins": [
+    {
+      "name": "qq",
+      "source": "./plugins/qq",
+      "description": "Question cards for coding agents, plus hooks that ask each one exactly once, only while you're there, and record your answer.",
+      "category": "productivity",
+      "keywords": ["questions", "human-in-the-loop", "askuserquestion", "multi-agent", "hooks"]
+    }
+  ]
+}
