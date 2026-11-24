@@ -180,17 +180,19 @@ def own_origin(qdir: str) -> bool:
     """CLI-only fallback for sandboxes that can't write ~/.config: qq records the folder's
     device and inode in .state/origin when it creates the queue. A copy that arrived in a clone
     or zip has a new inode, so it never matches. Hooks never use this; they need real trust."""
+    if os.name == "nt":
+        return False
     try:
         with open(os.path.join(qdir, ".state", "origin"), encoding="utf-8") as fh:
             recorded = fh.read().strip()
         st = os.stat(qdir)
-        return recorded == f"{st.st_dev}\t{st.st_ino}"
+        return bool(st.st_dev and st.st_ino) and recorded == f"{st.st_dev}\t{st.st_ino}"
     except OSError:
         return False
 
 
 def usable_by_cli(qdir: str) -> bool:
-    return trusted(qdir) or (own_origin(qdir) and owned_privately(qdir) and not tracked_by_git(qdir))
+    return trusted(qdir) or (own_origin(qdir) and Q(qdir).safe() and not tracked_by_git(qdir))
 
 
 SANDBOX_NOTE = ("qq: couldn't use the trust list in {where} (read-only here?). The CLI keeps working on this queue, "
