@@ -184,14 +184,14 @@ def trust(qdir: str) -> None:
 
 
 def owned_privately(path: str) -> bool:
-    """POSIX: the queue must belong to this user and not be writable by group or others."""
+    """POSIX: the queue must belong to this user and not be writable by others."""
     if os.name == "nt":
         return True
     try:
         st = os.lstat(path)
     except OSError:
         return False
-    return st.st_uid == os.getuid() and not (st.st_mode & 0o022)
+    return st.st_uid == os.getuid() and not (st.st_mode & 0o002)  # group-writable is fine (umask 002)
 
 
 class Q:
@@ -214,7 +214,8 @@ class Q:
         if create and not os.path.isdir(self.dir):
             os.makedirs(os.path.dirname(self.dir), exist_ok=True)
             try:
-                os.mkdir(self.dir, 0o755)
+                os.mkdir(self.dir, 0o700)
+                os.chmod(self.dir, 0o700)  # owner-only whatever the umask
                 made = True
             except FileExistsError:
                 pass
@@ -222,9 +223,15 @@ class Q:
             raise SystemExit(f"qq: {self.dir} already exists but was not created by you with qq. Look inside it; "
                              "if it is yours, run `qq init --trust-existing` yourself (agents must not), else delete it.")
         for d in (self.open, self.asking, self.closed, self.state, self.ids):
-            os.makedirs(d, exist_ok=True)
+            if not os.path.isdir(d):
+                os.makedirs(d, 0o700, exist_ok=True)
         if made:
-            trust(self.dir)
+            try:
+                trust(self.dir)
+            except OSError:
+                print(f"qq: couldn't record trust in {os.path.dirname(TRUST_FILE)} (read-only here?); the card is written, "
+                      "but hooks stay off in this repository until you run `qq init --trust-existing` outside the sandbox.",
+                      file=sys.stderr)
         ignore = os.path.join(self.dir, ".gitignore")
         if not os.path.exists(ignore):
             with open(ignore, "w") as fh:
@@ -905,11 +912,23 @@ def cmd_init(q, a):
         trust(q.dir)
     else:
         q.ensure(create=True)
-    print(f"qq: queue ready at {q.dir}. qq's hooks are now active in this repository.")
+    print(f"qq: queue ready at {q.dir}. hooks: {hook_status(q)}")
 
 
 def cmd_path(q, _a):
     print(q.dir if os.path.isdir(q.dir) else f"{q.dir} (not created yet: run qq init)")
+
+
+def hook_status(q: Q) -> str:
+    if not os.path.isdir(q.dir):
+        return "inactive: no queue (run qq init)"
+    for bad, why in ((not trusted(q.dir), "untrusted (not created by you with qq; see qq init --trust-existing)"),
+                     (q.disabled(), "off (qq on re-enables)"),
+                     (not q.safe(), "unsafe folder (symlinked, or writable by other users)"),
+                     (tracked_by_git(q.dir), "committed to git")):
+        if bad:
+            return f"inactive: {why}"
+    return "active"
 
 
 def cmd_list(q, _a):
@@ -926,7 +945,8 @@ def cmd_list(q, _a):
     last = read_ts(q.last_human)
     print(f"human last typed: {fmt(last) if last else 'never recorded'}"
           f"{' · marked away' if os.path.exists(q.away) and (last is None or os.path.getmtime(q.away) > last) else ''}"
-          f"{' · qq is OFF here' if q.disabled() else ''}")
+          )
+    print(f"hooks: {hook_status(q)}")
 
 
 def cmd_claim(q, a):

@@ -47,7 +47,7 @@ Every question becomes a **card**: a small Markdown file in your project's `.qq/
 **Any agent: Codex, Cursor, Gemini CLI, Claude Code and more** (skill and CLI, through [skills.sh](https://skills.sh)):
 
 ```bash
-npx skills add bartawilly/qq
+npx skills add bartawilly/qq -g      # -g: for your user, in every project
 ```
 
 | You get | Plugin (Claude Code) | skills.sh (any agent) |
@@ -68,7 +68,7 @@ Restart your sessions afterwards, so they load the hooks.
 
 With any other agent, just ask it: *"use qq in this repo"* (it runs `qq.py init` from the skill).
 
-Other commands: `/qq list`, `/qq away` before you step out, `/qq back`, and `/qq off` to pause qq in a repository.
+Other commands: `/qq list` (it also shows whether the hooks are active, and why not), `/qq away` before you step out, `/qq back`, and `/qq off` to pause qq in a repository.
 
 Installed through skills.sh into Claude Code? Run `python3 ~/.agents/skills/qq/scripts/qq.py setup` once to add the hooks. It backs up your settings first, and `setup --remove` undoes it.
 

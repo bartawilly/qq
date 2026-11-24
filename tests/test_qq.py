@@ -426,6 +426,19 @@ try:
     check("qq init --trust-existing (typed by the human) trusts it", run(sys.executable, QQ, "init", "--trust-existing", cwd=planted, env=env_pl).returncode == 0)
     shutil.rmtree(os.path.join(planted, ".qq")); os.makedirs(os.path.join(planted, ".qq", "open"))
     check("a queue replaced at the same path is no longer trusted", run(sys.executable, QQ, "list", cwd=planted, env=env_pl).returncode != 0)
+    # --- umask 002, read-only config, status line ---
+    um = os.path.join(T, "umask"); os.makedirs(um)
+    env_um = dict(ENV, CLAUDE_PROJECT_DIR=um)
+    r = subprocess.run(["sh", "-c", f"umask 002 && {sys.executable} {QQ} init"], capture_output=True, text=True, cwd=um, env=env_um)
+    check("umask 002: init still reports hooks active", "hooks: active" in r.stdout)
+    check("umask 002: the gate really is on", denied(hook_env("pre", env_um, session_id="LIVE", cwd=um, tool_input=dict(questions=[dict(question="x", header="Fees")]))))
+    check("queue folder is owner-only", oct(os.stat(os.path.join(um, ".qq")).st_mode & 0o777) == "0o700")
+    ro = os.path.join(T, "roconf"); os.makedirs(ro); os.chmod(ro, 0o500)
+    sand = os.path.join(T, "sandboxed"); os.makedirs(sand)
+    r = run(sys.executable, QQ, "new", "x", "--title", "t", cwd=sand, env=dict(ENV, CLAUDE_PROJECT_DIR=sand, XDG_CONFIG_HOME=ro))
+    check("read-only config: qq new still writes the card and warns", r.returncode == 0 and r.stdout.strip().endswith(".md") and "couldn't record trust" in r.stderr)
+    os.chmod(ro, 0o700)
+    check("qq list shows the hook status", "hooks: active" in cli("list").stdout)
 finally:
     shutil.rmtree(T, ignore_errors=True)
 
