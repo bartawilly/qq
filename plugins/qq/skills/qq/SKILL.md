@@ -8,7 +8,7 @@ license: MIT
 
 Every question for the human is a **card**: one small Markdown file in the project's `.qq/` folder. A card waits until the human is present, it is asked exactly once, and the answer is written into it. This keeps your session from freezing on a question nobody is there to see, stops parallel sessions from asking twice, and means no answer gets lost in scrollback.
 
-The helper sits next to this file: `scripts/qq.py` (Python 3.9+, no dependencies). Below, `qq` means `python3 <this skill's folder>/scripts/qq.py`.
+The helper sits next to this file: `scripts/qq.py` (Python 3.10+, no dependencies). Below, `qq` means `python3 <this skill's folder>/scripts/qq.py`.
 
 qq is **opt-in per repository**: it does nothing until the repository has a queue. `qq init` creates one (in Claude Code with the plugin, the human can type `/qq init`), and so does the first `qq new`. Linked git worktrees share the main worktree's queue. `qq path` shows where it is. qq only trusts a queue it created itself, never a `.qq/` that was already there (a clone, a download). If qq refuses an existing `.qq/`, tell the human. Only they can trust it, from their own terminal (`qq init --trust-existing` asks them to type the path); you can't.
 

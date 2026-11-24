@@ -19,7 +19,7 @@ while the human is present, and the human's answer is recorded in the card.
     qq.py setup [--remove]           wire qq's hooks into Claude Code (skill installs only)
     qq.py hook <prompt|pre|post|fail|end> Claude Code hook entry points (stdin: hook JSON)
 
-Python 3.9+, standard library only. Every hook fails open: on any error it prints nothing.
+Python 3.10+, standard library only. Every hook fails open: on any error it prints nothing.
 """
 import argparse
 import calendar

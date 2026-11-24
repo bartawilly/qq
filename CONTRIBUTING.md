@@ -22,7 +22,7 @@ To try your changes in Claude Code, add your clone as a local marketplace:
 - **Never `allow`.** The gate only ever denies. `allow` with `updatedInput` would answer the box for the human.
 - **Test first.** Every behaviour change comes with a case in `tests/test_qq.py` that fails without it.
 - **Keep cards human.** The card template is for a person returning cold: plain words, real-looking numbers, an honest recommendation.
-- **Standard library only**, Python 3.9+.
+- **Standard library only**, Python 3.10+.
 
 ## Pull requests
 

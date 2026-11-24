@@ -72,7 +72,7 @@ Other commands: `/qq list` (it also shows whether the hooks are active, and why 
 
 Installed through skills.sh into Claude Code? Run `python3 ~/.agents/skills/qq/scripts/qq.py setup` once to add the hooks. It backs up your settings first, and `setup --remove` undoes it.
 
-Needs Python 3.9+ as `python3`, and nothing else. Tested on macOS and Linux; Windows is untested. On a fresh Mac, `python3` may first prompt you to install Apple's command-line tools.
+Needs Python 3.10+ as `python3`, and nothing else. Tested on macOS and Linux; Windows is untested. On a fresh Mac, `python3` may first prompt you to install Apple's command-line tools.
 
 ## A card
 
